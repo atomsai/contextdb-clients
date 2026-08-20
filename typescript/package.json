@@ -1,6 +1,6 @@
 {
   "name": "@contextdb/cloud",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "TypeScript SDK for persistent, action-aware memory in AI voice, support, and workflow agents",
   "keywords": [
     "ai-agents",
@@ -13,6 +13,7 @@
     "contextdb"
   ],
   "type": "module",
+  "browser": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -43,7 +44,8 @@
   "scripts": {
     "test": "vitest run",
     "lint": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "prepack": "npm run build"
   },
   "devDependencies": {
