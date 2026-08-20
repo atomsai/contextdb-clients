@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "contextdb-cloud-client"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Remote client for the ContextDB Cloud data plane (hosted alpha)"
 readme = "README.md"
 license = "Apache-2.0"
