@@ -9,6 +9,9 @@ The repository contains transport code and the strict OpenAPI contract only.
 The multi-tenant server, managed sources, operations, billing, and enterprise
 control plane remain private.
 
+The binding placement rule is documented in
+[PUBLIC_BOUNDARY.md](PUBLIC_BOUNDARY.md) and checked in CI.
+
 ## Python
 
 ```bash
@@ -50,6 +53,22 @@ const db = new CloudClient({
 ```
 
 Project API keys are server credentials. Never place them in browser code.
+
+## Agent framework starter kits
+
+Start from a working memory lifecycle instead of wiring one framework callback
+at a time:
+
+- [OpenAI Agents SDK memory starter](starters/openai-agents-python/)
+- [LangGraph persistent memory starter](starters/langgraph-python/)
+- [Vercel AI SDK memory starter](starters/vercel-ai-sdk/)
+- [LiveKit Agents caller-memory starter](starters/livekit-agents-python/)
+- [PyAI Omni voice-agent memory starter](starters/pyai-omni/)
+
+Each starter recalls before the model answers, writes only selected durable
+facts, keeps keys server-side, and shows where action evaluation belongs.
+Browse the [starter-kit guide](starters/) for the shared contract and official
+framework references.
 
 ## Contract
 

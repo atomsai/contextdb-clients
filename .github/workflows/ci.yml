@@ -37,6 +37,66 @@ jobs:
       - run: npm run build
       - run: npm pack --dry-run
 
+  starter-python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - path: starters/openai-agents-python
+            check: >-
+              python -c 'import agent; built=agent.build_agent(None,
+              "user-1", "context"); assert built.tools'
+          - path: starters/langgraph-python
+            check: >-
+              OPENAI_API_KEY=test python -c 'import agent;
+              graph=agent.build_graph(None); assert graph'
+          - path: starters/livekit-agents-python
+            check: >-
+              python -c 'import agent;
+              built=agent.MemoryVoiceAgent(None, "user-1"); assert built.tools'
+    defaults:
+      run:
+        working-directory: ${{ matrix.path }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ${{ matrix.path }}/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile agent.py
+      - run: ${{ matrix.check }}
+
+  starter-typescript:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        path:
+          - starters/vercel-ai-sdk
+          - starters/pyai-omni
+    defaults:
+      run:
+        working-directory: ${{ matrix.path }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+      - run: npm ci
+      - run: npm run check
+
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/check_public_boundary.py
+
   openapi:
     runs-on: ubuntu-latest
     steps:

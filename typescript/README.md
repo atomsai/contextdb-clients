@@ -35,6 +35,14 @@ runtime. Use it from Node.js servers, API routes, workers, or server actions.
 - Pass consistency tokens when a follow-up recall must observe a recent write.
 - Report execution receipts for an auditable memory-to-action timeline.
 
+## TypeScript starter kits
+
+- [Vercel AI SDK](https://github.com/atomsai/contextdb-clients/tree/main/starters/vercel-ai-sdk)
+- [PyAI Omni voice agents](https://github.com/atomsai/contextdb-clients/tree/main/starters/pyai-omni)
+
+Both starters install this package from npm and compile against their current
+framework dependencies in CI.
+
 ## Links
 
 - [ContextDB API documentation](https://contextdb.ai/docs)

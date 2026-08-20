@@ -55,6 +55,15 @@ and verifies that no memory rows or vector-index IDs remain.
 - **Privacy operations:** delete one memory, a stable slot, or a complete user
   partition with verification.
 
+## Python starter kits
+
+- [OpenAI Agents SDK](https://github.com/atomsai/contextdb-clients/tree/main/starters/openai-agents-python)
+- [LangGraph](https://github.com/atomsai/contextdb-clients/tree/main/starters/langgraph-python)
+- [LiveKit Agents with PyAI speech](https://github.com/atomsai/contextdb-clients/tree/main/starters/livekit-agents-python)
+
+Each starter installs this package and is checked against the documented
+framework imports in CI.
+
 ## Links
 
 - [API documentation](https://contextdb.ai/docs)
