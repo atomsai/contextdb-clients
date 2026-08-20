@@ -1,7 +1,17 @@
 {
   "name": "@contextdb/cloud",
-  "version": "0.1.0-alpha.2",
-  "description": "Remote client for the ContextDB Cloud data plane (hosted alpha)",
+  "version": "0.1.0-alpha.3",
+  "description": "TypeScript SDK for persistent, action-aware memory in AI voice, support, and workflow agents",
+  "keywords": [
+    "ai-agents",
+    "agent-memory",
+    "voice-ai",
+    "llm",
+    "context",
+    "memory",
+    "typescript",
+    "contextdb"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,6 +32,10 @@
     "type": "git",
     "url": "git+https://github.com/atomsai/contextdb-clients.git",
     "directory": "typescript"
+  },
+  "homepage": "https://contextdb.ai/docs",
+  "bugs": {
+    "url": "https://github.com/atomsai/contextdb-clients/issues"
   },
   "publishConfig": {
     "access": "public"
