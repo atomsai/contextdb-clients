@@ -4,13 +4,22 @@ build-backend = "hatchling.build"
 
 [project]
 name = "contextdb-cloud-client"
-version = "0.1.0a2"
-description = "Remote client for the ContextDB Cloud data plane (hosted alpha)"
+version = "0.1.0a3"
+description = "Python SDK for persistent, action-aware memory in AI voice, support, and workflow agents"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.10"
 authors = [{ name = "Atoms AI", email = "gaurav@saaslabs.co" }]
+keywords = [
+    "ai-agents",
+    "agent-memory",
+    "voice-ai",
+    "llm",
+    "context",
+    "memory",
+    "contextdb",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "License :: OSI Approved :: Apache Software License",
