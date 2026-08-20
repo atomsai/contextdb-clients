@@ -40,6 +40,11 @@ export class CloudClient {
   private readonly fetchFn: typeof fetch;
 
   constructor(options: CloudClientOptions) {
+    if (typeof window !== "undefined") {
+      throw new Error(
+        "@contextdb/cloud is server-only; project API keys must never run in browser code",
+      );
+    }
     if (!options.apiKey.startsWith("cdb_")) {
       throw new Error("apiKey must be a project key (cdb_…)");
     }

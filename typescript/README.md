@@ -23,6 +23,8 @@ const saved = await db.remember(
 ```
 
 Project API keys are server credentials. Do not expose them to browser code.
+The package is marked server-only and throws if constructed in a browser
+runtime. Use it from Node.js servers, API routes, workers, or server actions.
 
 ## Use cases
 

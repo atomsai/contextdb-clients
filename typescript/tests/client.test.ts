@@ -45,6 +45,24 @@ describe("CloudClient", () => {
     ).toThrow("cdb_");
   });
 
+  it("fails closed when constructed in browser code", () => {
+    Object.defineProperty(globalThis, "window", {
+      value: {},
+      configurable: true,
+    });
+    try {
+      expect(
+        () =>
+          new CloudClient({
+            baseUrl: "https://api.contextdb.ai",
+            apiKey: "cdb_test_key",
+          }),
+      ).toThrow("server-only");
+    } finally {
+      Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
   it("remember sends provenance and bearer auth", async () => {
     const fetchFn = mockFetch(200, {
       memory,
