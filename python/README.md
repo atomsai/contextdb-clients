@@ -1,4 +1,4 @@
-# contextdb-cloud-client (Python)
+# ContextDB Cloud Python SDK for AI agent memory
 
 Remote client for the ContextDB Cloud data plane. The hosted API and this
 package are alpha and do not carry a production availability commitment.
@@ -43,3 +43,26 @@ Delete one bad memory with `forget(user_id, memory_id=...)`. Whole-partition
 erasure is deliberately harder: pass `erase_partition=True`,
 `confirmation=user_id`, and an `idempotency_key`; Cloud deletes the partition
 and verifies that no memory rows or vector-index IDs remain.
+
+## Use cases
+
+- **AI voice agents:** remember caller preferences and confirmed constraints
+  across calls.
+- **Customer support agents:** retrieve prior context while requiring trusted
+  evidence before consequential actions.
+- **Workflow agents:** record act/ask/abstain decisions and report execution
+  outcomes.
+- **Privacy operations:** delete one memory, a stable slot, or a complete user
+  partition with verification.
+
+## Links
+
+- [API documentation](https://contextdb.ai/docs)
+- [Source and examples](https://github.com/atomsai/contextdb-clients)
+- [Open-source ContextDB engine](https://pypi.org/project/pycontextdb/)
+- [Release notes](https://github.com/atomsai/contextdb-clients/releases)
+
+## Is this package production-ready?
+
+No. `contextdb-cloud-client` and the hosted service are alpha. The package does
+not claim a public availability SLA.

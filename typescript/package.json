@@ -1,6 +1,6 @@
 {
   "name": "@contextdb/cloud",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Remote client for the ContextDB Cloud data plane (hosted alpha)",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,7 +20,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/atomsai/contextdb-clients.git",
+    "url": "git+https://github.com/atomsai/contextdb-clients.git",
     "directory": "typescript"
   },
   "publishConfig": {
