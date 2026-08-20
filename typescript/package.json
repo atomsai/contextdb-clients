@@ -1,6 +1,6 @@
 {
   "name": "@contextdb/cloud",
-  "version": "0.1.0-alpha.4",
+  "version": "0.1.0-alpha.5",
   "description": "TypeScript SDK for persistent, action-aware memory in AI voice, support, and workflow agents",
   "keywords": [
     "ai-agents",

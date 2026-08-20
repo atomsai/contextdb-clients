@@ -29,7 +29,7 @@ from contextdb_cloud_client.types import (
     ReceiptStatus,
 )
 
-__version__ = "0.1.0a1"
+__version__ = "0.1.0a4"
 
 __all__ = [
     "ActionDecision",

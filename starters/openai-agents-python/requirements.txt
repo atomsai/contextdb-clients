@@ -1,0 +1,2 @@
+contextdb-cloud-client==0.1.0a3
+openai-agents==0.22.0

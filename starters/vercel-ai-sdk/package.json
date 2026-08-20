@@ -1,0 +1,21 @@
+{
+  "name": "contextdb-vercel-ai-sdk-starter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.44",
+    "@contextdb/cloud": "^0.1.0-alpha.4",
+    "ai": "^7.0.70",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}
