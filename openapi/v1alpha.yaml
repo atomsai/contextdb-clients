@@ -1,0 +1,1099 @@
+openapi: 3.1.0
+info:
+  title: ContextDB Cloud data-plane API
+  version: 1.0.0-alpha.1
+  description: |
+    The ContextDB Cloud data plane (hosted alpha). Managed, decision-safe
+    agent memory: remember with provenance, recall for grounding, and
+    recall_for_action before consequential actions.
+
+    Authentication: `Authorization: Bearer cdb_…` — a project-wide server
+    credential. The key determines org and project; requests supply only
+    `user_id`, which is a partition key, not end-user authentication.
+
+    This surface is the complete alpha allowlist. `/v1/forget` does not
+    exist by design (docs/02 §5.2): deletion by caller-supplied ID remains
+    an operator action until its scope proof is adopted with tests.
+    `/v1/confirm` and `/mcp` were adopted after the SDK 0.3.0 scoped-ID
+    hardening: both prove partition ownership at the store layer, so a
+    foreign memory ID is indistinguishable from a missing one.
+
+    `/mcp` is a stateless Model Context Protocol endpoint (JSON-RPC 2.0
+    over streamable HTTP) exposing the same tools with the same scoping.
+
+    Not production-ready. No SLA.
+  contact:
+    name: Atoms AI
+    email: gaurav@saaslabs.co
+  license:
+    name: Proprietary — hosted alpha
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: https://api.contextdb.ai
+    description: Hosted alpha
+tags:
+  - name: meta
+    description: Public process health and dependency readiness
+  - name: memory
+    description: Store, extract, and recall customer memories
+  - name: decisions
+    description: Check trusted memories and resolve explicit confirmations
+  - name: mcp
+    description: Model Context Protocol discovery and tool calls
+
+security:
+  - ProjectKey: []
+
+paths:
+  /health:
+    get:
+      tags: [meta]
+      summary: Liveness — no auth, no dependencies
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /.well-known/contextdb-audit-keys.json:
+    get:
+      tags: [meta]
+      summary: Public keys for offline audit-export verification
+      operationId: auditVerificationKeys
+      security: []
+      responses:
+        "200":
+          description: Active audit signing keys
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditPublicKeys"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /ready:
+    get:
+      tags: [meta]
+      summary: Readiness — metadata store, memory store, PII key
+      operationId: ready
+      security: []
+      responses:
+        "200":
+          description: All checks pass
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "503":
+          description: At least one check fails
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/remember:
+    post:
+      tags: [memory]
+      summary: Store one memory
+      operationId: remember
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RememberRequest"
+      responses:
+        "200":
+          description: The stored memory
+          headers:
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RememberResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "409": { $ref: "#/components/responses/IdempotencyConflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /v1/remember_many:
+    post:
+      tags: [memory]
+      summary: LLM-free batch store
+      operationId: rememberMany
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RememberManyRequest"
+      responses:
+        "200":
+          description: The stored memories
+          headers:
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RememberManyResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "409": { $ref: "#/components/responses/IdempotencyConflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /v1/extract_memories:
+    post:
+      tags: [memory]
+      summary: Extract sourced memories from a bounded conversation
+      operationId: extractMemories
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      description: |
+        Runs a bounded, extractive formation loop over PII-processed turns.
+        Every candidate cites an exact quote and turn index. `propose` returns
+        candidates without writing; `commit` writes validated candidates
+        through the same scoped trust and slot-deduplication path as remember.
+
+        Provider failures return a well-formed terminal run result with a
+        named status. No raw transcript is stored in the formation-run ledger.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractMemoriesRequest"
+      responses:
+        "200":
+          description: Formation completed or found no durable memories
+          headers:
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FormationResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "409": { $ref: "#/components/responses/IdempotencyConflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502":
+          description: Provider failed or returned invalid output after bounded retry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FormationResponse" }
+        "503":
+          description: Provider unavailable, queue exhausted, or storage failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FormationResponse" }
+        "504":
+          description: Provider timed out within the formation budget
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FormationResponse" }
+
+  /v1/recall:
+    post:
+      tags: [memory]
+      summary: Recall memories for grounding
+      operationId: recall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecallRequest"
+      responses:
+        "200":
+          description: Rendered context plus the memories behind it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecallResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /v1/recall_for_action:
+    post:
+      tags: [decisions]
+      summary: Trusted, action-relevant memory only
+      description: |
+        The fail-closed pre-action gate. Records and returns a durable
+        `decision_id`, explicit `act` / `ask` / `abstain` outcome, trusted
+        memories, and pending confirmation IDs. The host uses the decision ID
+        to report its terminal outcome through `/v1/receipts`. Confirmation
+        means an actor attested; it does not prove objective truth.
+      operationId: recallForAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecallForActionRequest"
+      responses:
+        "200":
+          description: Durable action decision and its receipt target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecallForActionResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /v1/confirm:
+    post:
+      tags: [decisions]
+      summary: Graduate a pending memory via explicit confirmation
+      description: |
+        The writeback that closes the ask -> confirm -> act loop. After the
+        user says yes, the fact becomes confirmed, first-party, and
+        high-confidence, and then passes `recall_for_action`. Partition
+        ownership is proven at the store layer: a memory ID outside the
+        caller's org/project/user scope returns 404, indistinguishable from
+        a missing one.
+      operationId: confirm
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmRequest"
+      responses:
+        "200":
+          description: The confirmed memory
+          headers:
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/IdempotencyConflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /v1/forget:
+    post:
+      tags: [memory]
+      summary: Delete one memory, one slot, or a verified user partition
+      description: |
+        Scope is derived from the project key plus the required `user_id`.
+        Choose exactly one mode: `memory_id`, `entity` + `attribute`, or
+        `erase_partition=true`. Whole-partition erasure also requires
+        `confirmation` equal to `user_id` and an `Idempotency-Key`.
+      operationId: forget
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgetRequest"
+      responses:
+        "200":
+          description: Erasure result
+          headers:
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForgetResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/IdempotencyConflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /v1/receipts:
+    post:
+      tags: [decisions]
+      summary: Report what the host did after an action decision
+      description: |
+        Attaches one terminal, host-reported execution receipt to the durable
+        `decision_id` returned by `recall_for_action`. ContextDB records the
+        report but does not inspect the downstream system. Structured fields
+        only: free-text payloads are not accepted. Acting after an `ask` or
+        `abstain` decision is retained with `policy_alignment=violated`.
+      operationId: recordExecutionReceipt
+      parameters:
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExecutionReceiptRequest"
+      responses:
+        "200":
+          description: The terminal execution receipt
+          headers:
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionReceiptResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /mcp:
+    post:
+      tags: [mcp]
+      summary: Model Context Protocol endpoint (JSON-RPC 2.0, stateless)
+      description: |
+        Single JSON-RPC 2.0 objects over POST; responses are JSON. Tools:
+        `remember`, `recall`, `recall_for_action`, `pending_confirmations`,
+        `confirm`, and scoped `forget` — the same contract and scoping as the
+        plain HTTP routes. Whole-partition erasure remains on the idempotent
+        HTTP and console flows. Authentication is the same `cdb_` bearer key.
+        Notifications return 202 with no body.
+      operationId: mcp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JsonRpcRequest"
+      responses:
+        "200":
+          description: JSON-RPC result or error object
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JsonRpcResponse"
+        "202":
+          description: Notification accepted (no body)
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/pending_confirmations:
+    get:
+      tags: [decisions]
+      summary: Facts waiting on a yes (query string)
+      operationId: pendingConfirmationsGet
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/UserId"
+      responses:
+        "200":
+          description: Memories pending confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingConfirmationsResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+    post:
+      tags: [decisions]
+      summary: Facts waiting on a yes (JSON body)
+      operationId: pendingConfirmationsPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PendingConfirmationsRequest"
+      responses:
+        "200":
+          description: Memories pending confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingConfirmationsResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+components:
+  securitySchemes:
+    ProjectKey:
+      type: http
+      scheme: bearer
+      description: Project-wide server credential (`cdb_…`). Never in browsers.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Project-scoped retry key (8-128 URL-safe characters). The same key and
+        canonical payload replay the encrypted stored response. Reusing a key
+        with a different route or payload returns 409. On extract_memories this
+        applies only when mode is commit.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._:\\-]{8,128}$"
+    RequiredIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Stable project-scoped key for this logical receipt. Retrying with the
+        same key and payload replays the original response.
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._:\\-]{8,128}$"
+
+  headers:
+    IdempotencyReplayed:
+      description: "true when this response was replayed; false for the owner request"
+      schema:
+        type: string
+        enum: ["true", "false"]
+
+  responses:
+    BadRequest:
+      description: Malformed request or failed validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthenticated:
+      description: Missing, malformed, unknown, or revoked API key
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotEntitled:
+      description: Authenticated but not allowed (entitlement or billing state)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Target not found in the caller's partition (or missing)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    IdempotencyConflict:
+      description: |
+        The key was reused with a different request, an identical request is
+        still running, or a previous process ended with an ambiguous outcome.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: |
+        The decision already has a terminal receipt, or the Idempotency-Key
+        conflicts with an earlier request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    PayloadTooLarge:
+      description: Body or batch exceeds the configured cap
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: |
+        The client IP/project exceeded its request rate, or the project's
+        idempotency retention capacity is full until older keys expire.
+      headers:
+        Retry-After:
+          description: Seconds until a request is likely to be accepted
+          schema: { type: integer, minimum: 1 }
+        X-RateLimit-Limit:
+          description: Sustained requests allowed per minute
+          schema: { type: integer, minimum: 1 }
+        X-RateLimit-Remaining:
+          description: Requests remaining in the current burst bucket
+          schema: { type: integer, minimum: 0 }
+        X-RateLimit-Scope:
+          description: Limiting identity (`ip` or `project`)
+          schema: { type: string, enum: [ip, project] }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    StoreUnavailable:
+      description: Memory or metadata store unreachable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    UserId:
+      type: string
+      pattern: "^[A-Za-z0-9._:@+\\-]{1,128}$"
+      description: End-user memory partition key. Not an identity assertion.
+
+    MemoryVersion:
+      type: integer
+      minimum: 0
+      description: Monotonic consistency version within one organization/project.
+
+    PrimaryWalLsn:
+      type: [string, "null"]
+      pattern: "^[0-9A-F]+/[0-9A-F]+$"
+      description: Primary PostgreSQL WAL position observed after commit.
+
+    EpistemicSource:
+      type: string
+      enum: [user_stated, agent_inferred, third_party]
+      description: Who vouches for the claim. Required on writes.
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable message; never a stack trace
+        request_id:
+          type: [string, "null"]
+      additionalProperties: false
+
+    HealthResponse:
+      type: object
+      required: [ok, service]
+      properties:
+        ok: { type: boolean }
+        service: { type: string }
+        sdk_pin: { type: string }
+      additionalProperties: true
+
+    AuditPublicKeys:
+      type: object
+      required: [schema_version, keys]
+      properties:
+        schema_version: { type: integer, const: 1 }
+        keys:
+          type: array
+          items:
+            type: object
+            required: [kid, alg, public_key, status]
+            properties:
+              kid: { type: string, minLength: 16, maxLength: 16 }
+              alg: { type: string, const: Ed25519 }
+              public_key: { type: string }
+              status: { type: string, const: active }
+            additionalProperties: false
+      additionalProperties: false
+
+    ReadyResponse:
+      type: object
+      required: [ready, checks]
+      properties:
+        ready: { type: boolean }
+        checks:
+          type: object
+          required: [metadata_store, memory_store, connector_store, pii_key]
+          properties:
+            metadata_store: { type: boolean }
+            memory_store: { type: boolean }
+            connector_store: { type: boolean }
+            pii_key: { type: boolean }
+          additionalProperties: false
+      additionalProperties: false
+
+    Memory:
+      type: object
+      required:
+        - id
+        - content
+        - user_id
+        - epistemic_source
+        - confidence
+        - corroboration_count
+        - action_relevant
+        - requires_confirmation
+        - confirmed
+        - independent_corroboration
+        - injection_suspect
+        - entity_key
+        - attribute_key
+        - valid_until
+        - superseded_by
+      properties:
+        id: { type: string }
+        content:
+          type: string
+          description: Stored content with PII redacted as `[TYPE]` placeholders
+        user_id:
+          type: [string, "null"]
+        epistemic_source:
+          $ref: "#/components/schemas/EpistemicSource"
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        corroboration_count: { type: integer, minimum: 0 }
+        action_relevant: { type: boolean }
+        requires_confirmation: { type: boolean }
+        confirmed: { type: boolean }
+        independent_corroboration: { type: integer, minimum: 0 }
+        injection_suspect: { type: boolean }
+        entity_key: { type: [string, "null"] }
+        attribute_key: { type: [string, "null"] }
+        valid_until: { type: [string, "null"], format: date-time }
+        superseded_by: { type: [string, "null"] }
+      additionalProperties: false
+
+    RememberRequest:
+      type: object
+      required: [user_id, content, source]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        content: { type: string, minLength: 1, maxLength: 4000 }
+        source:
+          $ref: "#/components/schemas/EpistemicSource"
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        action_relevant: { type: boolean }
+        entity: { type: string, maxLength: 200 }
+        attribute: { type: string, maxLength: 200 }
+      additionalProperties: false
+      description: entity and attribute must be set together (400 otherwise).
+
+    RememberItem:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string, minLength: 1, maxLength: 4000 }
+        source:
+          $ref: "#/components/schemas/EpistemicSource"
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        action_relevant: { type: boolean }
+        entity: { type: string, maxLength: 200 }
+        attribute: { type: string, maxLength: 200 }
+      additionalProperties: false
+
+    RememberManyRequest:
+      type: object
+      required: [user_id, items]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/RememberItem"
+      additionalProperties: false
+
+    RememberResponse:
+      type: object
+      required: [memory, memory_version, primary_wal_lsn]
+      properties:
+        memory:
+          $ref: "#/components/schemas/Memory"
+        memory_version:
+          $ref: "#/components/schemas/MemoryVersion"
+        primary_wal_lsn:
+          $ref: "#/components/schemas/PrimaryWalLsn"
+      additionalProperties: false
+
+    RememberManyResponse:
+      type: object
+      required: [memories, memory_version, primary_wal_lsn]
+      properties:
+        memories:
+          type: array
+          items: { $ref: "#/components/schemas/Memory" }
+        memory_version:
+          $ref: "#/components/schemas/MemoryVersion"
+        primary_wal_lsn:
+          $ref: "#/components/schemas/PrimaryWalLsn"
+      additionalProperties: false
+
+    FormationTurn:
+      type: object
+      required: [speaker, content]
+      properties:
+        speaker:
+          type: string
+          enum: [user, agent, third_party]
+        content:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      additionalProperties: false
+
+    ExtractMemoriesRequest:
+      type: object
+      required: [user_id, turns]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        turns:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/FormationTurn" }
+        mode:
+          type: string
+          enum: [propose, commit]
+          default: propose
+        source_id:
+          type: [string, "null"]
+          pattern: "^[A-Za-z0-9._:@+\\-]{1,128}$"
+        max_memories:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 10
+      additionalProperties: false
+
+    FormationCandidate:
+      type: object
+      required:
+        - content
+        - quote
+        - turn_indexes
+        - source
+        - confidence
+        - action_relevant
+        - entity
+        - attribute
+      properties:
+        content: { type: string }
+        quote:
+          type: string
+          description: Exact PII-processed quote supporting the candidate
+        turn_indexes:
+          type: array
+          items: { type: integer, minimum: 0 }
+        source:
+          $ref: "#/components/schemas/EpistemicSource"
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        action_relevant: { type: boolean }
+        entity: { type: [string, "null"] }
+        attribute: { type: [string, "null"] }
+      additionalProperties: false
+
+    FormationResponse:
+      type: object
+      required:
+        - run_id
+        - status
+        - mode
+        - attempts
+        - candidates
+        - memories
+        - error_code
+        - request_id
+      properties:
+        run_id: { type: string }
+        status:
+          type: string
+          enum:
+            - completed
+            - no_memories
+            - provider_unavailable
+            - provider_error
+            - invalid_output
+            - timed_out
+            - budget_exhausted
+            - storage_error
+            - internal_error
+            - interrupted
+        mode:
+          type: string
+          enum: [propose, commit]
+        attempts: { type: integer, minimum: 0, maximum: 3 }
+        candidates:
+          type: array
+          items: { $ref: "#/components/schemas/FormationCandidate" }
+        memories:
+          type: array
+          items: { $ref: "#/components/schemas/Memory" }
+        error_code: { type: [string, "null"] }
+        request_id: { type: string }
+      additionalProperties: false
+
+    RecallRequest:
+      type: object
+      required: [user_id, query]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        query: { type: string, minLength: 1, maxLength: 2000 }
+        top_k: { type: integer, minimum: 1, maximum: 50, default: 5 }
+        entity: { type: string, maxLength: 200 }
+        min_confidence: { type: number, minimum: 0, maximum: 1 }
+        min_memory_version:
+          $ref: "#/components/schemas/MemoryVersion"
+        min_primary_wal_lsn:
+          type: string
+          pattern: "^[0-9A-Fa-f]+/[0-9A-Fa-f]+$"
+          description: Minimum primary WAL position the read must include.
+        read_consistency:
+          type: string
+          enum: [default, primary, replica_fallback]
+          default: default
+          description: |
+            `default` routes token-bearing reads to primary and tokenless reads
+            to the read pool. `primary` always uses primary.
+            `replica_fallback` waits briefly on the read pool, then retries
+            against primary.
+      additionalProperties: false
+
+    RecallResponse:
+      type: object
+      required: [context, memories]
+      properties:
+        context:
+          type: string
+          description: Injection-guarded rendered context for prompting
+        memories:
+          type: array
+          items: { $ref: "#/components/schemas/Memory" }
+      additionalProperties: false
+
+    RecallForActionRequest:
+      type: object
+      required: [user_id, query]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        query: { type: string, minLength: 1, maxLength: 2000 }
+        top_k: { type: integer, minimum: 1, maximum: 50, default: 5 }
+      additionalProperties: false
+
+    RecallForActionResponse:
+      type: object
+      required: [decision_id, outcome, memories, pending_confirmation_ids]
+      properties:
+        decision_id:
+          type: string
+          format: uuid
+          description: Durable receipt target for this action evaluation
+        outcome:
+          type: string
+          enum: [act, ask, abstain]
+        memories:
+          type: array
+          items: { $ref: "#/components/schemas/Memory" }
+          description: Trusted memories; populated only for an act outcome
+        pending_confirmation_ids:
+          type: array
+          items: { type: string }
+          description: Memories that caused an ask outcome
+      additionalProperties: false
+
+    ConfirmRequest:
+      type: object
+      required: [user_id, memory_id]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        memory_id: { type: string, minLength: 1, maxLength: 128 }
+      additionalProperties: false
+
+    ConfirmResponse:
+      type: object
+      required: [memory, memory_version, primary_wal_lsn]
+      properties:
+        memory:
+          $ref: "#/components/schemas/Memory"
+        memory_version:
+          $ref: "#/components/schemas/MemoryVersion"
+        primary_wal_lsn:
+          $ref: "#/components/schemas/PrimaryWalLsn"
+      additionalProperties: false
+
+    ForgetRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        memory_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        entity:
+          type: string
+          minLength: 1
+          maxLength: 200
+        attribute:
+          type: string
+          minLength: 1
+          maxLength: 200
+        erase_partition:
+          type: boolean
+          default: false
+        confirmation:
+          type: string
+          maxLength: 128
+      additionalProperties: false
+
+    ForgetResponse:
+      type: object
+      required:
+        [mode, deleted, verified, request_id, memory_version, primary_wal_lsn]
+      properties:
+        mode:
+          type: string
+          enum: [memory, slot, partition]
+        deleted:
+          type: integer
+          minimum: 0
+        verified:
+          type: [boolean, "null"]
+          description: Non-null only for whole-partition erasure
+        request_id:
+          type: string
+        memory_version:
+          $ref: "#/components/schemas/MemoryVersion"
+        primary_wal_lsn:
+          $ref: "#/components/schemas/PrimaryWalLsn"
+      additionalProperties: false
+
+    ExecutionReceiptRequest:
+      type: object
+      required: [user_id, decision_id, action_name, status]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        decision_id:
+          type: string
+          format: uuid
+        action_name:
+          type: string
+          pattern: "^[A-Za-z][A-Za-z0-9._:\\-]{0,127}$"
+          description: Stable action category, such as appointment.book
+        status:
+          type: string
+          enum: [succeeded, failed, skipped]
+        external_ref:
+          type: string
+          pattern: "^[A-Za-z0-9._:\\-]{1,128}$"
+          description: Optional opaque non-PII identifier in the downstream system
+        error_code:
+          type: string
+          pattern: "^[A-Za-z0-9._:\\-]{1,128}$"
+          description: Structured failure code; allowed only when status is failed
+      additionalProperties: false
+
+    ExecutionReceipt:
+      type: object
+      required:
+        - id
+        - decision_id
+        - action_name
+        - status
+        - policy_alignment
+        - external_ref
+        - error_code
+        - request_id
+        - created_at
+      properties:
+        id: { type: string, format: uuid }
+        decision_id: { type: string, format: uuid }
+        action_name: { type: string }
+        status:
+          type: string
+          enum: [succeeded, failed, skipped]
+        policy_alignment:
+          type: string
+          enum: [aligned, violated]
+          description: Violated when the host attempted execution after ask or abstain
+        external_ref:
+          type: [string, "null"]
+        error_code:
+          type: [string, "null"]
+        request_id: { type: string }
+        created_at: { type: string, format: date-time }
+      additionalProperties: false
+
+    ExecutionReceiptResponse:
+      type: object
+      required: [decision_id, outcome, receipt]
+      properties:
+        decision_id: { type: string, format: uuid }
+        outcome:
+          type: string
+          enum: [act, ask, abstain]
+        receipt:
+          $ref: "#/components/schemas/ExecutionReceipt"
+      additionalProperties: false
+
+    JsonRpcRequest:
+      type: object
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc: { type: string, const: "2.0" }
+        id: {}
+        method: { type: string }
+        params: { type: object }
+      additionalProperties: false
+
+    JsonRpcResponse:
+      type: object
+      required: [jsonrpc]
+      properties:
+        jsonrpc: { type: string, const: "2.0" }
+        id: {}
+        result: { type: object }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: integer }
+            message: { type: string }
+          additionalProperties: false
+      additionalProperties: false
+
+    PendingConfirmationsRequest:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+      additionalProperties: false
+
+    PendingConfirmationsResponse:
+      type: object
+      required: [memories]
+      properties:
+        memories:
+          type: array
+          items: { $ref: "#/components/schemas/Memory" }
+      additionalProperties: false
