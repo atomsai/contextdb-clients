@@ -26,6 +26,15 @@ async with CloudClient("https://api.contextdb.ai", api_key="cdb_…") as cdb:
             external_ref="appt-8842",
         )
     pending = await cdb.pending_confirmations("caller-1")
+
+    # Hosted Alpha production-shaped formation: enqueue, then poll.
+    submitted = await cdb.submit_formation_job(
+        "caller-1",
+        [{"speaker": "user", "content": "I prefer Saturday mornings."}],
+        mode="propose",
+        idempotency_key="call-456-formation-v1",
+    )
+    formation = await cdb.get_formation_job(submitted.job_id)
 ```
 
 `LocalClient` wraps the in-process memory calls for offline development.
@@ -38,6 +47,8 @@ server's secret store; never in a browser or client-side code.
 Pass a stable `idempotency_key` when retrying `remember`, `remember_many`,
 `confirm`, or `extract_memories(..., mode="commit")`. Reuse the key only for
 the exact same logical request.
+`submit_formation_job` always requires one. It accepts structured text turns
+only; no audio or cancellation contract exists.
 
 Delete one bad memory with `forget(user_id, memory_id=...)`. Whole-partition
 erasure is deliberately harder: pass `erase_partition=True`,

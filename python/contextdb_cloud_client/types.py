@@ -27,6 +27,38 @@ FormationStatus = Literal[
     "internal_error",
     "interrupted",
 ]
+FormationJobStatus = Literal[
+    "queued",
+    "running",
+    "retry_wait",
+    "succeeded",
+    "failed",
+]
+FormationTerminalReason = Literal[
+    "completed",
+    "no_memories",
+    "input_rejected",
+    "pii_rejected",
+    "scope_rejected",
+    "result_rejected",
+    "provider_unavailable",
+    "provider_error",
+    "deadline_exceeded",
+    "max_attempts",
+    "worker_lost",
+    "commit_rejected",
+    "storage_error",
+    "internal_error",
+    "configuration_changed",
+]
+FormationAttemptStatus = Literal[
+    "running",
+    "succeeded",
+    "retry",
+    "failed",
+    "worker_lost",
+    "deadline_exceeded",
+]
 
 
 class ApiError(Exception):
@@ -264,5 +296,227 @@ class FormationResponse:
             ],
             memories=[Memory.from_dict(memory) for memory in data["memories"]],
             error_code=data.get("error_code"),
+            request_id=str(data["request_id"]),
+        )
+
+
+@dataclass(frozen=True)
+class FormationJobSubmission:
+    job_id: str
+    status: FormationJobStatus
+    request_id: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FormationJobSubmission:
+        return cls(
+            job_id=str(data["job_id"]),
+            status=data["status"],
+            request_id=str(data["request_id"]),
+        )
+
+
+@dataclass(frozen=True)
+class FormationCandidateReview:
+    content: str | None
+    quote: str | None
+    turn_indexes: list[int]
+    source: str | None
+    confidence: float | None
+    action_relevant: bool | None
+    entity: str | None
+    attribute: str | None
+    accepted: bool
+    candidate_index: int | None
+    rejection_reason: str | None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FormationCandidateReview:
+        return cls(
+            content=(
+                str(data["content"]) if data.get("content") is not None else None
+            ),
+            quote=str(data["quote"]) if data.get("quote") is not None else None,
+            turn_indexes=[int(index) for index in data["turn_indexes"]],
+            source=str(data["source"]) if data.get("source") is not None else None,
+            confidence=(
+                float(data["confidence"])
+                if data.get("confidence") is not None
+                else None
+            ),
+            action_relevant=(
+                bool(data["action_relevant"])
+                if data.get("action_relevant") is not None
+                else None
+            ),
+            entity=str(data["entity"]) if data.get("entity") is not None else None,
+            attribute=(
+                str(data["attribute"])
+                if data.get("attribute") is not None
+                else None
+            ),
+            accepted=bool(data["accepted"]),
+            candidate_index=(
+                int(data["candidate_index"])
+                if data.get("candidate_index") is not None
+                else None
+            ),
+            rejection_reason=(
+                str(data["rejection_reason"])
+                if data.get("rejection_reason") is not None
+                else None
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class FormationJobAttempt:
+    attempt: int
+    status: FormationAttemptStatus
+    provider_called: bool
+    provider: str
+    model: str
+    latency_ms: int
+    accepted_count: int
+    rejected_count: int
+    provider_cost_usd: float | None
+    error_code: str | None
+    failure_reason: str | None
+    started_at: str
+    finished_at: str | None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FormationJobAttempt:
+        return cls(
+            attempt=int(data["attempt"]),
+            status=data["status"],
+            provider_called=bool(data["provider_called"]),
+            provider=str(data["provider"]),
+            model=str(data["model"]),
+            latency_ms=int(data["latency_ms"]),
+            accepted_count=int(data["accepted_count"]),
+            rejected_count=int(data["rejected_count"]),
+            provider_cost_usd=(
+                float(data["provider_cost_usd"])
+                if data.get("provider_cost_usd") is not None
+                else None
+            ),
+            error_code=data.get("error_code"),
+            failure_reason=data.get("failure_reason"),
+            started_at=str(data["started_at"]),
+            finished_at=data.get("finished_at"),
+        )
+
+
+@dataclass(frozen=True)
+class FormationJobResult:
+    mode: FormationMode
+    terminal_reason: FormationTerminalReason
+    candidates: list[FormationCandidateReview]
+    memory_ids: list[str]
+    memory_version: int | None
+    primary_wal_lsn: str | None
+    accepted_count: int
+    rejected_count: int
+    provider: str
+    model: str
+    turns: int
+    provider_attempts: int
+    provider_latency_ms: int
+    provider_cost_usd: float | None
+    error_code: str | None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FormationJobResult:
+        return cls(
+            mode=data["mode"],
+            terminal_reason=data["terminal_reason"],
+            candidates=[
+                FormationCandidateReview.from_dict(candidate)
+                for candidate in data["candidates"]
+            ],
+            memory_ids=[str(memory_id) for memory_id in data["memory_ids"]],
+            memory_version=(
+                int(data["memory_version"])
+                if data.get("memory_version") is not None
+                else None
+            ),
+            primary_wal_lsn=data.get("primary_wal_lsn"),
+            accepted_count=int(data["accepted_count"]),
+            rejected_count=int(data["rejected_count"]),
+            provider=str(data["provider"]),
+            model=str(data["model"]),
+            turns=int(data["turns"]),
+            provider_attempts=int(data["provider_attempts"]),
+            provider_latency_ms=int(data["provider_latency_ms"]),
+            provider_cost_usd=(
+                float(data["provider_cost_usd"])
+                if data.get("provider_cost_usd") is not None
+                else None
+            ),
+            error_code=data.get("error_code"),
+        )
+
+
+@dataclass(frozen=True)
+class FormationJob:
+    job_id: str
+    status: FormationJobStatus
+    mode: FormationMode
+    attempt_count: int
+    provider_attempts: int
+    max_attempts: int
+    max_provider_attempts: int
+    terminal_reason: FormationTerminalReason | None
+    error_code: str | None
+    accepted_count: int
+    rejected_count: int
+    provider: str
+    model: str
+    provider_latency_ms: int
+    provider_cost_usd: float | None
+    elapsed_ms: int
+    created_at: str
+    started_at: str | None
+    completed_at: str | None
+    attempts: list[FormationJobAttempt]
+    result: FormationJobResult | None
+    request_id: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> FormationJob:
+        raw_result = data.get("result")
+        return cls(
+            job_id=str(data["job_id"]),
+            status=data["status"],
+            mode=data["mode"],
+            attempt_count=int(data["attempt_count"]),
+            provider_attempts=int(data["provider_attempts"]),
+            max_attempts=int(data["max_attempts"]),
+            max_provider_attempts=int(data["max_provider_attempts"]),
+            terminal_reason=data.get("terminal_reason"),
+            error_code=data.get("error_code"),
+            accepted_count=int(data["accepted_count"]),
+            rejected_count=int(data["rejected_count"]),
+            provider=str(data["provider"]),
+            model=str(data["model"]),
+            provider_latency_ms=int(data["provider_latency_ms"]),
+            provider_cost_usd=(
+                float(data["provider_cost_usd"])
+                if data.get("provider_cost_usd") is not None
+                else None
+            ),
+            elapsed_ms=int(data["elapsed_ms"]),
+            created_at=str(data["created_at"]),
+            started_at=data.get("started_at"),
+            completed_at=data.get("completed_at"),
+            attempts=[
+                FormationJobAttempt.from_dict(attempt)
+                for attempt in data["attempts"]
+            ],
+            result=(
+                FormationJobResult.from_dict(raw_result)
+                if isinstance(raw_result, dict)
+                else None
+            ),
             request_id=str(data["request_id"]),
         )

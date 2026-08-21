@@ -323,6 +323,63 @@ describe("CloudClient", () => {
     });
   });
 
+  it("submits a bounded Formation job with required idempotency", async () => {
+    const fetchFn = mockFetch(202, {
+      job_id: "frm_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      status: "queued",
+      request_id: "req-job",
+    });
+    const cdb = clientWith(fetchFn);
+
+    const submitted = await cdb.submitFormationJob(
+      "caller-1",
+      [{ speaker: "user", content: "I prefer Saturday." }],
+      {
+        idempotencyKey: "formation-job-0001",
+        mode: "commit",
+        sourceId: "call-1",
+        maxMemories: 4,
+        deadlineSeconds: 20,
+        requestId: "req-job",
+      },
+    );
+
+    expect(submitted.status).toBe("queued");
+    const [url, init] = vi.mocked(fetchFn).mock.calls[0] as unknown as [
+      URL,
+      RequestInit,
+    ];
+    expect(url.pathname).toBe("/v1/formation/jobs");
+    expect((init.headers as Record<string, string>)["idempotency-key"]).toBe(
+      "formation-job-0001",
+    );
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      user_id: "caller-1",
+      mode: "commit",
+      source_id: "call-1",
+      max_memories: 4,
+      deadline_seconds: 20,
+    });
+  });
+
+  it("polls one Formation job without sending content", async () => {
+    const fetchFn = mockFetch(200, { job_id: "frm_1", status: "running" });
+    const cdb = clientWith(fetchFn);
+
+    await cdb.getFormationJob("frm_1", "req-poll");
+
+    const [url, init] = vi.mocked(fetchFn).mock.calls[0] as unknown as [
+      URL,
+      RequestInit,
+    ];
+    expect(url.pathname).toBe("/v1/formation/jobs/frm_1");
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+    expect((init.headers as Record<string, string>)["x-request-id"]).toBe(
+      "req-poll",
+    );
+  });
+
   it("maps error responses to ApiError with code and request id", async () => {
     const fetchFn = mockFetch(401, {
       code: "unauthenticated",

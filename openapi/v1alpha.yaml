@@ -210,6 +210,70 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/FormationResponse" }
 
+  /v1/formation/jobs:
+    post:
+      tags: [memory]
+      summary: Submit a durable asynchronous Formation job
+      operationId: submitFormationJob
+      parameters:
+        - $ref: "#/components/parameters/RequiredIdempotencyKey"
+      description: |
+        Durably snapshots and enqueues bounded, PII-processed structured text
+        turns. The worker returns either encrypted candidates for review or an
+        idempotent commit result. Audio is not accepted. Poll the Location
+        resource until the closed status is `succeeded` or `failed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FormationJobRequest"
+      responses:
+        "202":
+          description: Job durably accepted, or an identical enqueue replayed
+          headers:
+            Idempotency-Replayed:
+              $ref: "#/components/headers/IdempotencyReplayed"
+            Location:
+              description: Project-scoped polling resource for this job
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormationJobSubmission"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "409": { $ref: "#/components/responses/IdempotencyConflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
+  /v1/formation/jobs/{job_id}:
+    get:
+      tags: [memory]
+      summary: Inspect one project-scoped Formation job
+      operationId: getFormationJob
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^frm_[a-f0-9]{32}$"
+      responses:
+        "200":
+          description: Current state, attempts, and encrypted-at-rest terminal result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FormationJob"
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotEntitled" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/StoreUnavailable" }
+
   /v1/recall:
     post:
       tags: [memory]
@@ -478,8 +542,9 @@ components:
       in: header
       required: true
       description: |
-        Stable project-scoped key for this logical receipt. Retrying with the
-        same key and payload replays the original response.
+        Stable project-scoped key for this logical mutation or job. Retrying
+        with the same key and payload resolves to the original resource or
+        response; reuse with a different payload returns 409.
       schema:
         type: string
         pattern: "^[A-Za-z0-9._:\\-]{8,128}$"
@@ -626,11 +691,17 @@ components:
         ready: { type: boolean }
         checks:
           type: object
-          required: [metadata_store, memory_store, connector_store, pii_key]
+          required:
+            - metadata_store
+            - memory_store
+            - connector_store
+            - formation_store
+            - pii_key
           properties:
             metadata_store: { type: boolean }
             memory_store: { type: boolean }
             connector_store: { type: boolean }
+            formation_store: { type: boolean }
             pii_key: { type: boolean }
           additionalProperties: false
       additionalProperties: false
@@ -844,6 +915,260 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Memory" }
         error_code: { type: [string, "null"] }
+        request_id: { type: string }
+      additionalProperties: false
+
+    FormationJobRequest:
+      type: object
+      required: [user_id, turns]
+      properties:
+        user_id:
+          $ref: "#/components/schemas/UserId"
+        turns:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: "#/components/schemas/FormationTurn" }
+        mode:
+          type: string
+          enum: [propose, commit]
+          default: propose
+        source_id:
+          type: [string, "null"]
+          pattern: "^[A-Za-z0-9._:@+\\-]{1,128}$"
+        max_memories:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 10
+        deadline_seconds:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 300
+          default: 25
+      additionalProperties: false
+
+    FormationJobStatus:
+      type: string
+      enum: [queued, running, retry_wait, succeeded, failed]
+
+    FormationTerminalReason:
+      type: string
+      enum:
+        - completed
+        - no_memories
+        - input_rejected
+        - pii_rejected
+        - scope_rejected
+        - result_rejected
+        - provider_unavailable
+        - provider_error
+        - deadline_exceeded
+        - max_attempts
+        - worker_lost
+        - commit_rejected
+        - storage_error
+        - internal_error
+        - configuration_changed
+
+    FormationJobSubmission:
+      type: object
+      required: [job_id, status, request_id]
+      properties:
+        job_id:
+          type: string
+          pattern: "^frm_[a-f0-9]{32}$"
+        status:
+          $ref: "#/components/schemas/FormationJobStatus"
+        request_id: { type: string }
+      additionalProperties: false
+
+    FormationCandidateReview:
+      type: object
+      required:
+        - content
+        - quote
+        - turn_indexes
+        - source
+        - confidence
+        - action_relevant
+        - entity
+        - attribute
+        - accepted
+        - rejection_reason
+      properties:
+        content: { type: [string, "null"] }
+        quote:
+          type: [string, "null"]
+          description: Exact PII-processed quote supporting an accepted candidate
+        turn_indexes:
+          type: array
+          items: { type: integer, minimum: 0 }
+        source:
+          oneOf:
+            - $ref: "#/components/schemas/EpistemicSource"
+            - type: "null"
+        confidence: { type: [number, "null"], minimum: 0, maximum: 1 }
+        action_relevant: { type: [boolean, "null"] }
+        entity: { type: [string, "null"] }
+        attribute: { type: [string, "null"] }
+        accepted: { type: boolean }
+        candidate_index: { type: integer, minimum: -1 }
+        rejection_reason: { type: [string, "null"] }
+      additionalProperties: false
+
+    FormationAttempt:
+      type: object
+      required:
+        - attempt
+        - status
+        - provider_called
+        - provider
+        - model
+        - latency_ms
+        - accepted_count
+        - rejected_count
+        - provider_cost_usd
+        - error_code
+        - failure_reason
+        - started_at
+        - finished_at
+      properties:
+        attempt: { type: integer, minimum: 1, maximum: 4 }
+        status:
+          type: string
+          enum:
+            - running
+            - succeeded
+            - retry
+            - failed
+            - worker_lost
+            - deadline_exceeded
+        provider_called: { type: boolean }
+        provider: { type: string }
+        model: { type: string }
+        latency_ms: { type: integer, minimum: 0 }
+        accepted_count: { type: integer, minimum: 0, maximum: 20 }
+        rejected_count: { type: integer, minimum: 0, maximum: 40 }
+        provider_cost_usd: { type: [number, "null"], minimum: 0 }
+        error_code: { type: [string, "null"] }
+        failure_reason: { type: [string, "null"] }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+      additionalProperties: false
+
+    FormationJobResult:
+      type: object
+      required:
+        - mode
+        - terminal_reason
+        - candidates
+        - memory_ids
+        - memory_version
+        - primary_wal_lsn
+        - accepted_count
+        - rejected_count
+        - provider
+        - model
+        - turns
+        - provider_attempts
+        - provider_latency_ms
+        - provider_cost_usd
+        - error_code
+      properties:
+        mode:
+          type: string
+          enum: [propose, commit]
+        terminal_reason:
+          $ref: "#/components/schemas/FormationTerminalReason"
+        candidates:
+          type: array
+          maxItems: 60
+          items:
+            $ref: "#/components/schemas/FormationCandidateReview"
+        memory_ids:
+          type: array
+          maxItems: 20
+          items: { type: string }
+        memory_version:
+          type: [integer, "null"]
+          minimum: 0
+        primary_wal_lsn:
+          type: [string, "null"]
+          pattern: "^[0-9A-Fa-f]+/[0-9A-Fa-f]+$"
+        accepted_count: { type: integer, minimum: 0, maximum: 20 }
+        rejected_count: { type: integer, minimum: 0, maximum: 40 }
+        provider: { type: string }
+        model: { type: string }
+        turns: { type: integer, minimum: 1, maximum: 100 }
+        provider_attempts: { type: integer, minimum: 0, maximum: 3 }
+        provider_latency_ms: { type: integer, minimum: 0 }
+        provider_cost_usd: { type: [number, "null"], minimum: 0 }
+        error_code: { type: [string, "null"] }
+      additionalProperties: false
+
+    FormationJob:
+      type: object
+      required:
+        - job_id
+        - status
+        - mode
+        - attempt_count
+        - provider_attempts
+        - max_attempts
+        - max_provider_attempts
+        - terminal_reason
+        - error_code
+        - accepted_count
+        - rejected_count
+        - provider
+        - model
+        - provider_latency_ms
+        - provider_cost_usd
+        - elapsed_ms
+        - created_at
+        - started_at
+        - completed_at
+        - attempts
+        - result
+        - request_id
+      properties:
+        job_id:
+          type: string
+          pattern: "^frm_[a-f0-9]{32}$"
+        status:
+          $ref: "#/components/schemas/FormationJobStatus"
+        mode:
+          type: string
+          enum: [propose, commit]
+        attempt_count: { type: integer, minimum: 0, maximum: 4 }
+        provider_attempts: { type: integer, minimum: 0, maximum: 3 }
+        max_attempts: { type: integer, minimum: 1, maximum: 4 }
+        max_provider_attempts: { type: integer, minimum: 1, maximum: 3 }
+        terminal_reason:
+          oneOf:
+            - $ref: "#/components/schemas/FormationTerminalReason"
+            - type: "null"
+        error_code: { type: [string, "null"] }
+        accepted_count: { type: integer, minimum: 0, maximum: 20 }
+        rejected_count: { type: integer, minimum: 0, maximum: 40 }
+        provider: { type: string }
+        model: { type: string }
+        provider_latency_ms: { type: integer, minimum: 0 }
+        provider_cost_usd: { type: [number, "null"], minimum: 0 }
+        elapsed_ms: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        started_at: { type: [string, "null"], format: date-time }
+        completed_at: { type: [string, "null"], format: date-time }
+        attempts:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/FormationAttempt"
+        result:
+          oneOf:
+            - $ref: "#/components/schemas/FormationJobResult"
+            - type: "null"
         request_id: { type: string }
       additionalProperties: false
 

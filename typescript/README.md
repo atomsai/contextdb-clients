@@ -35,6 +35,24 @@ runtime. Use it from Node.js servers, API routes, workers, or server actions.
 - Pass consistency tokens when a follow-up recall must observe a recent write.
 - Report execution receipts for an auditable memory-to-action timeline.
 
+## Asynchronous Formation
+
+```ts
+const submitted = await db.submitFormationJob(
+  "caller-1",
+  [{ speaker: "user", content: "I prefer Saturday mornings." }],
+  {
+    mode: "propose",
+    idempotencyKey: "call-456-formation-v1",
+  },
+);
+
+const job = await db.getFormationJob(submitted.job_id);
+```
+
+Jobs accept structured text turns and return closed, inspectable statuses.
+Formation remains Hosted Alpha with no audio or cancellation contract.
+
 ## TypeScript starter kits
 
 - [Vercel AI SDK](https://github.com/atomsai/contextdb-clients/tree/main/starters/vercel-ai-sdk)
