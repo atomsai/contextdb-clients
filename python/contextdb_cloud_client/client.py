@@ -10,6 +10,7 @@ Hosted alpha. Not production-ready.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -19,6 +20,8 @@ from contextdb_cloud_client.types import (
     EpistemicSource,
     ExecutionReceiptResponse,
     ForgetResponse,
+    FormationJob,
+    FormationJobSubmission,
     FormationMode,
     FormationResponse,
     Health,
@@ -79,6 +82,12 @@ class CloudClient:
             data = resp.json()
         except ValueError:
             raise ApiError(resp.status_code, "non_json", "non-JSON response") from None
+        if not isinstance(data, dict):
+            raise ApiError(
+                resp.status_code,
+                "invalid_response",
+                "response body must be a JSON object",
+            )
         if not resp.is_success:
             raise ApiError(
                 resp.status_code,
@@ -86,7 +95,7 @@ class CloudClient:
                 str(data.get("message", f"HTTP {resp.status_code}")),
                 data.get("request_id"),
             )
-        return data
+        return dict(data)
 
     async def health(self) -> Health:
         data = await self._call("GET", "/health")
@@ -209,6 +218,51 @@ class CloudClient:
             "formation response is missing terminal status",
             data.get("request_id"),
         )
+
+    async def submit_formation_job(
+        self,
+        user_id: str,
+        turns: list[dict[str, str]],
+        *,
+        idempotency_key: str,
+        mode: FormationMode = "propose",
+        source_id: str | None = None,
+        max_memories: int = 10,
+        deadline_seconds: float = 25.0,
+        request_id: str | None = None,
+    ) -> FormationJobSubmission:
+        """Durably enqueue bounded structured turns for operated Formation."""
+        body: dict[str, Any] = {
+            "user_id": user_id,
+            "turns": turns,
+            "mode": mode,
+            "max_memories": max_memories,
+            "deadline_seconds": deadline_seconds,
+        }
+        if source_id is not None:
+            body["source_id"] = source_id
+        data = await self._call(
+            "POST",
+            "/v1/formation/jobs",
+            json=body,
+            request_id=request_id,
+            idempotency_key=idempotency_key,
+        )
+        return FormationJobSubmission.from_dict(data)
+
+    async def get_formation_job(
+        self,
+        job_id: str,
+        *,
+        request_id: str | None = None,
+    ) -> FormationJob:
+        """Poll one job; terminal candidates are decrypted only for its project."""
+        data = await self._call(
+            "GET",
+            f"/v1/formation/jobs/{quote(job_id, safe='')}",
+            request_id=request_id,
+        )
+        return FormationJob.from_dict(data)
 
     async def recall(
         self,

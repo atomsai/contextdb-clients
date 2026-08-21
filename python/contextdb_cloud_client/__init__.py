@@ -16,10 +16,18 @@ from contextdb_cloud_client.types import (
     ExecutionReceiptResponse,
     ForgetMode,
     ForgetResponse,
+    FormationAttemptStatus,
     FormationCandidate,
+    FormationCandidateReview,
+    FormationJob,
+    FormationJobAttempt,
+    FormationJobResult,
+    FormationJobStatus,
+    FormationJobSubmission,
     FormationMode,
     FormationResponse,
     FormationStatus,
+    FormationTerminalReason,
     Health,
     Memory,
     PolicyAlignment,
@@ -29,7 +37,7 @@ from contextdb_cloud_client.types import (
     ReceiptStatus,
 )
 
-__version__ = "0.1.0a4"
+__version__ = "0.1.0a5"
 
 __all__ = [
     "ActionDecision",
@@ -42,10 +50,18 @@ __all__ = [
     "ExecutionReceiptResponse",
     "ForgetMode",
     "ForgetResponse",
+    "FormationAttemptStatus",
     "FormationCandidate",
+    "FormationCandidateReview",
+    "FormationJob",
+    "FormationJobAttempt",
+    "FormationJobResult",
+    "FormationJobStatus",
+    "FormationJobSubmission",
     "FormationMode",
     "FormationResponse",
     "FormationStatus",
+    "FormationTerminalReason",
     "Health",
     "LocalClient",
     "Memory",

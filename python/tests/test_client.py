@@ -9,6 +9,8 @@ import pytest
 from contextdb_cloud_client import (
     ApiError,
     CloudClient,
+    FormationJob,
+    FormationJobSubmission,
     FormationResponse,
     Memory,
 )
@@ -28,6 +30,76 @@ MEMORY = {
     "entity_key": "caller",
     "attribute_key": "preferred_visit_day",
     "valid_until": None,
+}
+
+FORMATION_JOB = {
+    "job_id": "frm_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "succeeded",
+    "mode": "propose",
+    "attempt_count": 1,
+    "provider_attempts": 1,
+    "max_attempts": 3,
+    "max_provider_attempts": 2,
+    "terminal_reason": "completed",
+    "error_code": None,
+    "accepted_count": 1,
+    "rejected_count": 0,
+    "provider": "mock",
+    "model": "injected",
+    "provider_latency_ms": 5,
+    "provider_cost_usd": 0,
+    "elapsed_ms": 8,
+    "created_at": "2026-08-21T00:00:00+00:00",
+    "started_at": "2026-08-21T00:00:00+00:00",
+    "completed_at": "2026-08-21T00:00:00+00:00",
+    "attempts": [
+        {
+            "attempt": 1,
+            "status": "succeeded",
+            "provider_called": True,
+            "provider": "mock",
+            "model": "injected",
+            "latency_ms": 5,
+            "accepted_count": 1,
+            "rejected_count": 0,
+            "provider_cost_usd": 0,
+            "error_code": None,
+            "failure_reason": None,
+            "started_at": "2026-08-21T00:00:00+00:00",
+            "finished_at": "2026-08-21T00:00:00+00:00",
+        }
+    ],
+    "result": {
+        "mode": "propose",
+        "terminal_reason": "completed",
+        "candidates": [
+            {
+                "content": "Customer prefers Saturday",
+                "quote": "I prefer Saturday",
+                "turn_indexes": [0],
+                "source": "user_stated",
+                "confidence": 0.9,
+                "action_relevant": True,
+                "entity": None,
+                "attribute": None,
+                "accepted": True,
+                "rejection_reason": None,
+            }
+        ],
+        "memory_ids": [],
+        "memory_version": None,
+        "primary_wal_lsn": None,
+        "accepted_count": 1,
+        "rejected_count": 0,
+        "provider": "mock",
+        "model": "injected",
+        "turns": 1,
+        "provider_attempts": 1,
+        "provider_latency_ms": 5,
+        "provider_cost_usd": 0,
+        "error_code": None,
+    },
+    "request_id": "req-job",
 }
 
 
@@ -262,6 +334,60 @@ async def test_extract_memories_sends_mode_source_and_request_id() -> None:
     assert seen["rid"] == "req-formation"
     assert seen["idempotency"] == "formation-request-0001"
     assert result.status == "no_memories"
+    await client.close()
+
+
+async def test_submit_formation_job_sends_idempotency_and_budgets() -> None:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = request.content.decode()
+        seen["idempotency"] = request.headers["idempotency-key"]
+        seen["path"] = request.url.path
+        return httpx.Response(
+            202,
+            json={
+                "job_id": FORMATION_JOB["job_id"],
+                "status": "queued",
+                "request_id": "req-job",
+            },
+        )
+
+    client = CloudClient(
+        "http://127.0.0.1:8080",
+        api_key="cdb_test",
+        transport=httpx.MockTransport(handler),
+    )
+    submitted = await client.submit_formation_job(
+        "caller-1",
+        [{"speaker": "user", "content": "I prefer Saturday."}],
+        idempotency_key="formation-job-0001",
+        mode="commit",
+        max_memories=4,
+        deadline_seconds=20,
+    )
+
+    assert isinstance(submitted, FormationJobSubmission)
+    assert submitted.status == "queued"
+    assert seen["path"] == "/v1/formation/jobs"
+    assert seen["idempotency"] == "formation-job-0001"
+    sent = json.loads(seen["body"])
+    assert sent["mode"] == "commit"
+    assert sent["max_memories"] == 4
+    assert sent["deadline_seconds"] == 20
+    await client.close()
+
+
+async def test_get_formation_job_parses_attempts_and_candidates() -> None:
+    client = mock_client(200, FORMATION_JOB)
+
+    job = await client.get_formation_job(str(FORMATION_JOB["job_id"]))
+
+    assert isinstance(job, FormationJob)
+    assert job.status == "succeeded"
+    assert job.attempts[0].provider_called is True
+    assert job.result is not None
+    assert job.result.candidates[0].source == "user_stated"
     await client.close()
 
 

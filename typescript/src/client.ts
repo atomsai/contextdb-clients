@@ -15,6 +15,8 @@ import {
   EpistemicSource,
   ExecutionReceiptResponse,
   ForgetResponse,
+  FormationJob,
+  FormationJobSubmission,
   FormationMode,
   FormationResponse,
   FormationTurn,
@@ -215,6 +217,49 @@ export class CloudClient {
       "invalid_response",
       "formation response is missing terminal status",
       data.request_id as string | undefined,
+    );
+  }
+
+  async submitFormationJob(
+    userId: string,
+    turns: FormationTurn[],
+    options: {
+      idempotencyKey: string;
+      mode?: FormationMode;
+      sourceId?: string;
+      maxMemories?: number;
+      deadlineSeconds?: number;
+      requestId?: string;
+    },
+  ): Promise<FormationJobSubmission> {
+    const body: Record<string, unknown> = {
+      user_id: userId,
+      turns,
+      mode: options.mode ?? "propose",
+      max_memories: options.maxMemories ?? 10,
+      deadline_seconds: options.deadlineSeconds ?? 25,
+    };
+    if (options.sourceId !== undefined) body.source_id = options.sourceId;
+    return this.call<FormationJobSubmission>(
+      "POST",
+      "/v1/formation/jobs",
+      body,
+      undefined,
+      options.requestId,
+      options.idempotencyKey,
+    );
+  }
+
+  async getFormationJob(
+    jobId: string,
+    requestId?: string,
+  ): Promise<FormationJob> {
+    return this.call<FormationJob>(
+      "GET",
+      `/v1/formation/jobs/${encodeURIComponent(jobId)}`,
+      undefined,
+      undefined,
+      requestId,
     );
   }
 

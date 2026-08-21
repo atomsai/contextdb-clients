@@ -3,7 +3,7 @@
 Add persistent, action-aware memory to Python and TypeScript AI agents through
 the hosted ContextDB API. These public clients cover memory writes, recall,
 read-your-writes consistency, action decisions, confirmations, execution
-receipts, and verifiable deletion.
+receipts, verifiable deletion, and durable asynchronous memory formation.
 
 The repository contains transport code and the strict OpenAPI contract only.
 The multi-tenant server, managed sources, operations, billing, and enterprise
@@ -53,6 +53,24 @@ const db = new CloudClient({
 ```
 
 Project API keys are server credentials. Never place them in browser code.
+
+## Asynchronous memory formation
+
+Submit structured conversation turns after an interaction, then poll one
+durable job without blocking the realtime agent:
+
+```python
+submitted = await db.submit_formation_job(
+    "caller-1",
+    [{"speaker": "user", "content": "I prefer Saturday mornings."}],
+    mode="propose",
+    idempotency_key="call-456-formation-v1",
+)
+job = await db.get_formation_job(submitted.job_id)
+```
+
+Formation is Hosted Alpha. It accepts structured text turns only and does not
+claim audio ingestion, cancellation, job listing, or an availability SLO.
 
 ## Agent framework starter kits
 

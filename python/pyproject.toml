@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "contextdb-cloud-client"
-version = "0.1.0a4"
+version = "0.1.0a5"
 description = "Python SDK for persistent, action-aware memory in AI voice, support, and workflow agents"
 readme = "README.md"
 license = "Apache-2.0"
